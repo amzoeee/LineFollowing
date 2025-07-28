@@ -276,7 +276,6 @@ class LineController(Node):
             msg.velocity = [0.0, 0.0, 0.0]
         else:
             msg.velocity = [vx, vy, 0.0] # wants lenu ???
-            # msg.velocity = [1.5, 0.0, 0.0]
         msg.acceleration = [None, None, None]
         msg.yaw = float('nan')
         msg.yawspeed = wz
@@ -324,6 +323,7 @@ class LineController(Node):
         return (vx, vy, wz)
 
     def dc2lned(self, vector):
+        '''Use current yaw to convert vector from downward camera frame to lenu frame'''
         v4 = np.array([[vector[0]],
                         [vector[1]],
                         [vector[2]],
@@ -335,7 +335,7 @@ class LineController(Node):
         R_dc2lned = np.array([[-np.sin(yaw), np.cos(yaw), 0.0, 0.0], 
                                  [np.cos(yaw), np.sin(yaw), 0.0, 0.0], 
                                  [0.0, 0.0, 1.0, 0.0], 
-                                 [0.0, 0.0, 0.0, 1.0]]) # experimental :P 
+                                 [0.0, 0.0, 0.0, 1.0]]) 
 
         output = np.dot(R_dc2lned, v4)
         
@@ -390,9 +390,8 @@ class LineController(Node):
         self.prev_y_error = error[1]
 
         # Get angle between y-axis and line direction
+        # Positive angle is counter-clockwise
         forward = np.array([0.0, 1.0])
-        # angle = math.atan2(line_dir[1], line_dir[0])
-        # angle_error = math.atan2(forward[1], forward[0]) - angle
         angle_error = math.atan2(-line_dir[0], line_dir[1])
 
         # Set angular velocity (yaw)
