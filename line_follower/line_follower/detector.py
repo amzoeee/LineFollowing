@@ -98,146 +98,55 @@ class LineDetector(Node):
             (vx, vy) is a vector pointing in the direction of the line. Both values are given
             in downward camera pixel coordinates. Returns None if no line is found
         """
-
-        '''
-        TODO: Implement computer vision to detect a line (look back at last week's labs)
-        TODO: Retrieve x, y pixel coordinates and vx, vy collinear vector from the detected line (look at cv2.fitLine)
-        TODO: Populate the Line custom message and publish it to the topic '/line/param'
-        '''
+        
         # self.get_logger().info("trying to detect line...")
 
         h, w = image.shape
         
-        kernelsize = 6 # because i'm rlly lazy
-        kernel = np.ones((kernelsize, kernelsize), np.uint8)
-        dilation = cv2.dilate(image, kernel, iterations=4)
+        kernel_size = 30
+        kernel = np.ones((kernel_size,kernel_size), np.uint8) 
 
-        _, threshold = cv2.threshold(dilation, 0, 255, cv2.THRESH_BINARY)
+        kernel_size = 20
+        kernel2 = np.ones((kernel_size,kernel_size), np.uint8)
 
-        threshold_msg = self.bridge.cv2_to_imgmsg(threshold, "mono8")
+        # dilate + erode 
+        image = cv2.dilate(image, kernel,iterations = 1)
+        image = cv2.erode(image, kernel2,iterations = 1)
+
+        _, threshold = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY)
+
+        # threshold_msg = self.bridge.cv2_to_imgmsg(threshold, "mono8")
         # self.detector_image_pub.publish(threshold_msg)
 
-        contours, _ = cv2.findContours(threshold, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        valid_contours = []
-        # self.get_logger().info("number of contours: " + str(len(contours)))
-        height, width = threshold.shape[:2]
-        contour_only_image = np.zeros((height, width, 3), dtype=np.uint8)
+        cnt_sort = lambda cnt: (max(cv2.minAreaRect(cnt)[1])) # sort by largest height/width 
 
-        for cnt in contours:
-            area = cv2.contourArea(cnt)
-            x, y, w, h = cv2.boundingRect(cnt)
-            # if area > 8500 or (h > 80 and w < 70):
-            if True:
-                # self.get_logger().info("contour area: " + str(area))
-                valid_contours.append(cnt)
+        sorted_contours = sorted(contours, key=cnt_sort, reverse=True)
 
-        if len(valid_contours) > 0:
-            valid_contours = sorted(valid_contours, key=lambda cnt: cv2.contourArea(cnt))
-            # # choose biggest contour by area TODO: change probably
-            # cv2.drawContours(contour_only_image, [valid_contours[0]], 0, (255,255,255), -1)
-
-            # gray_image = cv2.cvtColor(contour_only_image, cv2.COLOR_BGR2GRAY)
-
-            # # image = self.bridge.cv2_to_imgmsg(gray_image, "mono8")
-            # # self.detector_image_pub.publish(image)
-
-            # points = np.argwhere(gray_image)
-
-            # m, b = self.calculate_regression(points)
-
-            # # self.get_logger().info(str(m))
-            
-            # x1, y1, x2, y2 = self.find_inliers(m,b, gray_image.shape)
-            
-            # # # reflect around center point?? idk if coordinate grr
-            # # x1 = w-x1
-            # # x2 = w-x2
-            # # y1 = h-y1
-            # # y2 = h-y2
-
-            # # # find midpoint of the line
-            # x = (x1 + x2)/2 if x1 > x2 else (x2 + x1)/2
-            # y = (y1 + y2)/2 if y1 > y2 else (y2 + y1)/2
-
-            # # x = x1
-            # # y = y1
-
-            # # TODO: maybe needs negating or something else idk coordinate systems
-            # vx = 1/np.sqrt(1 + m**2)
-            # vy = m/np.sqrt(1 + m**2)
-
-            [vx, vy, x, y] = cv2.fitLine(valid_contours[0], cv2.DIST_L2, 0, 0.01, 0.01)
-            
+        if len(sorted_contours) > 0:
+        
+            all_points = np.vstack(sorted_contours[0])
+            [vx, vy, x, y] = cv2.fitLine(all_points, cv2.DIST_L2, 0, 0.01, 0.01)
+                    
             return float(x), float(y), float(vx), float(vy)
-            # return x1, y1, x2, y2
-
-    def calculate_regression(self, points): # input is the result of np.argwhere
-        # convert points to float
-        points = points.astype(float) #TODO (see astype, https://docs.scipy.org/doc/numpy/reference/generated/numpy.ndarray.astype.html)
-        
-        xs = points[:, 1]
-        ys = points[:, 0]
-        x_mean = np.mean(xs)
-        y_mean = np.mean(ys)
-
-        xy_mean = np.mean(xs * ys)
-
-        x_squared_mean = np.mean(np.square(xs))
-
-        m = (x_mean*y_mean - xy_mean) / (np.square(x_mean) - x_squared_mean)
-        
-        b = y_mean - m*x_mean
-
-        return (m,b)  
     
     def find_inliers(self, m, b, shape):
-        width = shape[1]
-        height = shape[0]
+        height, width = shape
 
-        if b < 0: # if right side would go below 
-            y1 = 0
-            x1 = (y1-b)/m
+        # x = 0 (left edge), compute y
+        x1 = 0
+        y1 = m * x1 + b
 
-            # the other point: either left side or above 
-            if m*width + b > height: # if left side would go above
-                y2 = height
-                x2 = (y2-b)/m
+        # x = width - 1 (right edge), compute y
+        x2 = width
+        y2 = m * x2 + b
 
-            else: # left side would be fine
-                x2 = width
-                y2 = m*width + b
+        # Clip y values to stay within the image bounds
+        y1 = max(0, min(height - 1, int(round(y1))))
+        y2 = max(0, min(height - 1, int(round(y2))))
 
-        elif shape[1] < b: # if right side would go above
-            y1 = height
-            x1 = (y1-b)/m
-
-            # the other point: either left side or below 
-            if m*width + b < 0: # if left side would go below
-                y2 = 0
-                x2 = (y2-b)/m
-
-            else: # left side would be fine
-                x2 = width
-                y2 = m*width + b
-
-        else: # if right side is fine (0 <= b <= shape[1])
-            x1, y1 = 0, b
-
-            # left side has no limitations
-            if (m*width + b) < 0: # if it would go below
-                y2 = 0
-                x2 = (y2-b)/m
-
-            elif shape[1] < (m*width + b): # if it would go above
-                y2 = height
-                x2 = (y2-b)/m
-
-            else: # it'll go through the left edge (0 < m*max_b + b < shape[1])
-                x2 = width
-                y2 = m*width + b
-            
-        return x1, y1, x2, y2
+        return (x1, x2, y1, y2)
 
 def main(args=None):
     rclpy.init(args=args)
