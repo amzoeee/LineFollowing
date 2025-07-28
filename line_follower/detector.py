@@ -56,7 +56,7 @@ class LineDetector(Node):
         # self.get_logger().info("camera sub callback function!!")
 
         # Convert Image msg to OpenCV image
-        image = self.bridge.imgmsg_to_cv2(msg, "mono8")
+        image = self.bridge.imgmsg_to_cv2(msg, "brg8")
 
         # Detect line in the image. detect returns a parameterize the line (if one exists)
         line = self.detect_line(image)
@@ -71,8 +71,7 @@ class LineDetector(Node):
 
         # Publish annotated image if DISPLAY is True and a line was detected
         if DISPLAY and line is not None:
-            # Draw the detected line on a color version of the image
-            annotated = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+            annotated = image
             x, y, vx, vy = line
             pt1 = (int(x - 100*vx), int(y - 100*vy))
             pt2 = (int(x + 100*vx), int(y + 100*vy))
@@ -103,16 +102,23 @@ class LineDetector(Node):
 
         h, w = image.shape
         
-        kernel_size = 30
+        kernel_size = 40
         kernel = np.ones((kernel_size,kernel_size), np.uint8) 
 
-        kernel_size = 20
+        kernel_size = 30
         kernel2 = np.ones((kernel_size,kernel_size), np.uint8)
 
         # dilate + erode 
         image = cv2.dilate(image, kernel,iterations = 1)
         image = cv2.erode(image, kernel2,iterations = 1)
 
+        # Apply white mask to filter out external colors
+        mask = cv2.inRange(image, LOW, HI)
+        image = cv2.bitwise_and(image, image, mask=mask)
+
+        image = cv2.GaussianBlur(image, (5,5), 0)
+
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         _, threshold = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY)
 
         # threshold_msg = self.bridge.cv2_to_imgmsg(threshold, "mono8")
