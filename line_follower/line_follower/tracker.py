@@ -23,11 +23,11 @@ EXTEND = 300 # Number of pixels forward to extrapolate the line
 
 KP_X = 0.004
 KP_Y = 0.004
-KP_Z_W = 0.4  # Proportional gains for x, y, and angular velocity control
+KP_Z_W = 0.5  # Proportional gains for x, y, and angular velocity control
 
 KD_X = 0.002
 KD_Y = 0.002
-KD_Z_W = 0.04
+KD_Z_W = 0.05
 
 DISPLAY = True
 
