@@ -56,7 +56,7 @@ class LineDetector(Node):
         # self.get_logger().info("camera sub callback function!!")
 
         # Convert Image msg to OpenCV image
-        image = self.bridge.imgmsg_to_cv2(msg, "brg8")
+        image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
 
         # Detect line in the image. detect returns a parameterize the line (if one exists)
         line = self.detect_line(image)
@@ -100,13 +100,16 @@ class LineDetector(Node):
         
         # self.get_logger().info("trying to detect line...")
 
-        h, w = image.shape
+        h, w, _ = image.shape
         
         kernel_size = 40
         kernel = np.ones((kernel_size,kernel_size), np.uint8) 
 
         kernel_size = 30
         kernel2 = np.ones((kernel_size,kernel_size), np.uint8)
+
+        LOW = np.array([250, 250, 250])  # Lower image thresholding bound
+        HI = np.array([255, 255, 255])   # Upper image thresholding bound
 
         # dilate + erode 
         image = cv2.dilate(image, kernel,iterations = 1)
@@ -119,7 +122,7 @@ class LineDetector(Node):
         image = cv2.GaussianBlur(image, (5,5), 0)
 
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        _, threshold = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY)
+        _, threshold = cv2.threshold(image, 245, 255, cv2.THRESH_BINARY)
 
         # threshold_msg = self.bridge.cv2_to_imgmsg(threshold, "mono8")
         # self.detector_image_pub.publish(threshold_msg)
