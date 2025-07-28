@@ -1,1 +1,1 @@
-a ROS node for detecting and following a line :> 
+a ROS package for detecting and following a line :> 
