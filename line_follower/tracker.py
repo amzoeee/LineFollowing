@@ -80,6 +80,11 @@ class LineController(Node):
         # Quaternion representing the rotation of the drone's body frame in the NED frame. initiallize to identity quaternion
         self.quat_bu_lenu = (0, 0, 0, 1)
 
+        # Add direction consistency tracking
+        self.prev_line_dir = np.array([0.0, 1.0])  # Initialize pointing forward
+        self.direction_threshold = 0.5  # Minimum dot product to accept new direction fully
+        self.max_direction_change = 0.3  # Maximum change per frame (0-1, lower = more gradual)
+
         # Create a timer to publish control commands
         self.timer = self.create_timer(0.1, self.timer_callback)
 
@@ -207,55 +212,68 @@ class LineController(Node):
     
     def line_sub_cb(self, param):
         """
-        Callback function which is called when a new message of type Line is recieved by self.line_sub.
-        Notes:
-        - This is the function that maps a detected line into a velocity 
-        command
-            
-            Args:
-                - param: parameters that define the center and direction of detected line
+        Callback function with gradual direction adjustment
         """
-        # self.get_logger().info("Following line")
         # Extract line parameters
         x, y, vx, vy = param.x, param.y, param.vx, param.vy
         line_point = np.array([x, y])
-        line_dir = np.array([vx, vy])
-        line_dir = line_dir / np.linalg.norm(line_dir)  # Ensure unit vector
+        raw_line_dir = np.array([vx, vy])
+        raw_line_dir = raw_line_dir / np.linalg.norm(raw_line_dir)
 
-        if line_dir[1] < 0:
-            line_dir = -line_dir
+        # Check both directions of the line
+        dir_option1 = raw_line_dir
+        dir_option2 = -raw_line_dir
 
-        # Target point EXTEND pixels ahead along the line direction
+        # Calculate dot product with previous direction for both options
+        dot1 = np.dot(dir_option1, self.prev_line_dir)
+        dot2 = np.dot(dir_option2, self.prev_line_dir)
+
+        # Choose the direction most consistent with previous direction
+        if dot1 > dot2:
+            new_line_dir = dir_option1
+            consistency_score = dot1
+        else:
+            new_line_dir = dir_option2
+            consistency_score = dot2
+
+        # Gradually adjust direction based on consistency
+        if consistency_score > self.direction_threshold:
+            # Direction is consistent - accept it fully
+            line_dir = new_line_dir
+            self.prev_line_dir = line_dir
+        else:
+            # Direction changed too much - blend with previous direction
+            # Interpolate between previous and new direction
+            blend_factor = self.max_direction_change
+            line_dir = (1 - blend_factor) * self.prev_line_dir + blend_factor * new_line_dir
+            
+            # Normalize the blended direction
+            line_dir = line_dir / np.linalg.norm(line_dir)
+            
+            # Update previous direction gradually
+            self.prev_line_dir = line_dir
+            
+            self.get_logger().info(f"Direction inconsistent (score: {consistency_score:.2f}), blending with factor {blend_factor}")
+
+        # Rest of the control logic
         target = line_point + EXTEND * line_dir
-
-        # Error between center and target
         error = target - CENTER
 
-        # Set linear velocities (downward camera frame)
-        self.vx__dc = KP_X * error[0]
-        self.vy__dc = KP_Y * error[1]
+        # Set linear velocities
+        self.vx__dc = KP_X * error[0] + KD_X * (error[0]-self.prev_x_error)/0.1
+        self.vy__dc = KP_Y * error[1] + KD_Y * (error[1]-self.prev_y_error)/0.1
 
-        self.vx__dc += KD_X * (error[0]-self.prev_x_error)/0.1
-        self.vy__dc += KD_Y * (error[1]-self.prev_y_error)/0.1
+        # Calculate angle error using consistent direction
+        angle_error = math.atan2(-line_dir[0], line_dir[1])
+        self.wz__dc = KP_Z_W * angle_error + KD_Z_W * (angle_error-self.prev_w_error)/0.1
 
+        # Update previous errors
         self.prev_x_error = error[0]
         self.prev_y_error = error[1]
-
-        # Get angle between y-axis and line direction
-        # Positive angle is counter-clockwise
-        forward = np.array([0.0, 1.0])
-        angle_error = math.atan2(-line_dir[0], line_dir[1])
-
-        # Set angular velocity (yaw)
-        self.wz__dc = KP_Z_W * angle_error
-
-        self.wz__dc += KD_Z_W * (angle_error-self.prev_w_error)/0.1
-
         self.prev_w_error = angle_error
 
         self.publish_trajectory_setpoint(*self.convert_velocity_setpoints())
-
-        self.get_logger().info(f"x error: {error[0]}, y error: {error[1]}, angle error: {angle_error}")
+        self.get_logger().info(f"Direction consistency: {consistency_score:.2f}, angle error: {angle_error:.2f}")
 
 def main(args=None) -> None:
     print('Starting offboard control node...')
