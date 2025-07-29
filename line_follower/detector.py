@@ -29,7 +29,7 @@ class LineDetector(Node):
         # A subscriber to the topic '/aero_downward_camera/image'
         self.camera_sub = self.create_subscription(
             Image,
-            '/world/line_following_track/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image',
+            '/camera_1/image_raw',
             self.camera_sub_cb,
             10
         )

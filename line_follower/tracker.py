@@ -13,7 +13,7 @@ import tf_transformations as tft
 # CONSTANTS #
 #############
 _RATE = 10 # (Hz) rate for rospy.rate
-_MAX_SPEED = 2.0 # (m/s)
+_MAX_SPEED = 1.0 # (m/s)
 _MAX_CLIMB_RATE = 1.0 # m/s
 _MAX_ROTATION_RATE = 5.0 # rad/s 
 IMAGE_HEIGHT = 960
@@ -63,7 +63,7 @@ class LineController(Node):
         self.offboard_setpoint_counter = 0
         self.vehicle_local_position = VehicleLocalPosition()
         self.vehicle_status = VehicleStatus()
-        self.takeoff_height = -2.0
+        self.takeoff_height = -1.5
 
         # Linear setpoint velocities in downward camera frame
         self.vx__dc = 0.0
@@ -191,6 +191,7 @@ class LineController(Node):
 
         output = np.dot(R_dc2lned, v4)
         
+        # TODO i did some bad stuff
         return (output[0,0], output[1,0], output[2,0])
         
     
